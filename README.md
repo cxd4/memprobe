@@ -1,2 +1,2 @@
 # memprobe
-Experimental self-executing program to query RAM sections.
+Experimental program to query RAM sections.

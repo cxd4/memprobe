@@ -5,16 +5,17 @@
 #include <string.h>
 
 #include <signal.h>
+#include <setjmp.h>
 
+static jmp_buf exc_pt;
 void exception_handler(int parameter)
 {
-    printf("Encountered exception signal %i.\n", parameter);
-    return;
+    putchar('\n');
+    longjmp(exc_pt, parameter);
 }
 
 int main(int argc, char* argv[])
 {
-    char* command;
     int shell_available;
     clock_t t1, t2;
     size_t addr_start, addr_end, swap_temporary;
@@ -27,26 +28,15 @@ int main(int argc, char* argv[])
         printf("\t%s [single address]\n", argv[0]);
         return 0;
     }
-    signal(SIGINT, SIG_IGN);
-    signal(SIGTERM, SIG_DFL);
-    signal(SIGILL, exception_handler);
-    signal(SIGABRT, exception_handler);
-    signal(SIGFPE, exception_handler);
+/*
+ * We will be attempting to dereference user-defined pointers in global RAM.
+ * We can expect segmentation faults from memory access violations.
+ *
+ * The rumor that C doesn't portably support catching exceptions like C++
+ * does is mostly true.  signal() and longjmp() prove the rumor false only on
+ * platforms where the environment generates automatic signals.
+ */
     signal(SIGSEGV, exception_handler);
-#if 0
-    signal(SIGQUIT, SIG_IGN);
-    signal(SIGCHLD, exception_handler);
-#endif
-
-    if (argv[1][0] != '-') { /* branch */
-    } else {
-        unsigned char memory_byte;
-
-        addr_start = (size_t)strtoul(argv[2], NULL, 16);
-        memory_byte = *(unsigned char *)(addr_start);
-        printf("0x%02X (%c)\n", memory_byte, memory_byte);
-        return 0;
-    }
 
     addr_start = (size_t)strtoul(argv[1], NULL, 0);
     addr_end   = addr_start;
@@ -57,13 +47,6 @@ int main(int argc, char* argv[])
         addr_start = addr_end;
         addr_end = swap_temporary;
     }
-    command = malloc(
-        strlen(argv[0])
-      + strlen(" -? ")
-      + strlen("0x")
-      + 2*sizeof(void *)
-      + sizeof('\0')
-    );
 
     shell_available = system(NULL);
     if (!shell_available) {
@@ -73,10 +56,17 @@ int main(int argc, char* argv[])
 
     t1 = clock();
     for (i = 0; addr_start + i <= addr_end; i++) {
+        unsigned char memory_byte;
+        int recovered_from_exception;
+
         printf("RAM[0x%lX]:  ", addr_start + i);
-        sprintf(command, "%s -- 0x%lX", argv[0], addr_start + i);
-        fflush(NULL);
-        system(command);
+        recovered_from_exception = setjmp(exc_pt);
+        if (recovered_from_exception) {
+            signal(SIGSEGV, exception_handler); /* Reschedule the handler. */
+            continue;
+        }
+        memory_byte = *(unsigned char *)(addr_start + i);
+        printf("0x%02X (%c)\n", memory_byte, memory_byte);
     }
     t2 = clock();
     putchar('\n');
