@@ -59,7 +59,7 @@ int main(int argc, char* argv[])
         unsigned char memory_byte;
         int recovered_from_exception;
 
-        printf("RAM[0x%lX]:  ", addr_start + i);
+        printf("RAM[0x%lX]:  ", (unsigned long)(addr_start + i));
         recovered_from_exception = setjmp(exc_pt);
         if (recovered_from_exception) {
             signal(SIGSEGV, exception_handler); /* Reschedule the handler. */
